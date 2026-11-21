@@ -8,35 +8,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Import the public website and its PDFs
+      - name: Copy public credentials and PDFs
         run: |
-          python3 - -
-          import pathlib, re, urllib.request, urllib.parse
-          base = 'https://aqel-qahtan-credentials.bali0411.chatgpt.site/'
-          def download(url):
-              req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0'})
-              return urllib.request.urlopen(req, timeout=90).read()
-          webpage = download(base)
-          matches = re.findall(rb'href=["\']([^"\']+\.pdf(?:\?[^"\']*)?)["\']', webpage, re.I)
-          seen=set()
-          for item in matches:
-              link=urllib.parse.urljoin(base, item.decode('utf-8'))
-              p=urllib.parse.urlparse(link)
-              relative=urllib.parse.unquote(p.path).lstrip('/')
-              if p.hostname != urllib.parse.urlparse(base).hostname or not relative.startswith('certificates/'):
-                  continue
-              if relative in seen: continue
-              seen.add(relative)
-              out=pathlib.Path(relative)
-              out.parent.mkdir(parents=True, exist_ok=True)
-              out.write_bytes(download(link))
-              print('Downloaded',relative, out.stat().st_size)
-          if len(seen)!=22:
-              raise RuntimeError(f'Expected 22 public PDFs but downloaded {len(seen)}')
-          pathlib.Path('index.html').write_bytes(webpage)
-          pathlib.Path('.nojekyll').touch()
-          print('Imported 22 PDFs and website')
-      - name: Commit website files
+          set -euo pipefail
+          source_url="https://aqel-qahtan-credentials.bali0411.chatgpt.site"
+          curl -fsSL "$source_url/" -o index.html
+          mkdir -p certificates
+          grep -oE 'certificates/[a-z0-9-]+[.]pdf' index.html | sort -u > pdf_paths.txt
+          count=$(wc -l &lt; pdf_paths.txt)
+          test "$count" -eq 22
+          while IFS= read -r path; do
+            curl -fsSL "$source_url/$path" -o "$path"
+            echo "Saved $path"
+          done &lt; pdf_paths.txt
+          rm pdf_paths.txt
+          touch .nojekyll
+      - name: Commit files to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
